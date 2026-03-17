@@ -68,7 +68,7 @@ GOOGLE_CREDS_FILE = os.path.expanduser("~/Desktop/google_creds.json")
 # Rate limit tracker — 500 requests per 30 minutes
 _request_times = []
 
-def api_get(path, params=None):
+def api_get(path, params=None, retries=2):
     import requests
     from datetime import datetime, timezone
     global _request_times
@@ -87,17 +87,28 @@ def api_get(path, params=None):
 
     url = f"{BASE_URL}{path}"
     headers = {"accept": "application/json", "x-api-key": API_KEY}
-    response = requests.get(url, headers=headers, params=params)
-    _request_times.append(time.time())
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+        _request_times.append(time.time())
 
-    if response.status_code == 200:
-        return response.json()
-    elif response.status_code == 429:
-        print("  Rate limited. Waiting 90s...")
-        time.sleep(90)
-        return api_get(path, params)
-    else:
-        print(f"  API error {response.status_code}: {response.text[:200]}")
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 429:
+            print("  Rate limited. Waiting 90s...")
+            time.sleep(90)
+            return api_get(path, params, retries)
+        else:
+            print(f"  API error {response.status_code}: {response.text[:200]}")
+            return None
+    except requests.exceptions.Timeout:
+        print(f"  Timeout on {path[:60]} — skipping")
+        return None
+    except requests.exceptions.ConnectionError:
+        if retries > 0:
+            print(f"  Connection error — retrying in 10s...")
+            time.sleep(10)
+            return api_get(path, params, retries - 1)
+        print(f"  Connection error — skipping")
         return None
 
 
@@ -384,7 +395,7 @@ def run_scan():
                 print(f"ERROR: {e}")
                 errors.append({"profile_uid": uid, "name": name, "error": str(e)})
 
-            time.sleep(2)
+            time.sleep(0.5)
             if request_count % 200 == 0:
                 print(f"\n  [Pausing 30s at {request_count} requests]")
                 time.sleep(30)
@@ -1703,7 +1714,7 @@ def run_metrics():
             except Exception as e:
                 print(f"ERROR: {e}")
 
-            time.sleep(2)
+            time.sleep(0.5)
             if request_count % 200 == 0:
                 print(f"\n  [Pausing 30s at {request_count} requests]")
                 time.sleep(30)
@@ -1935,7 +1946,7 @@ def run_full():
             except Exception as e:
                 print(f"ERROR: {e}")
 
-            time.sleep(2)
+            time.sleep(0.5)
             if request_count % 200 == 0:
                 print(f"\n  [Pausing 30s at {request_count} requests]")
                 time.sleep(30)
