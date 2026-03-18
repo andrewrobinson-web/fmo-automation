@@ -395,7 +395,7 @@ def run_scan():
                 print(f"ERROR: {e}")
                 errors.append({"profile_uid": uid, "name": name, "error": str(e)})
 
-            time.sleep(0.5)
+            time.sleep(0.15)
             if request_count % 200 == 0:
                 print(f"\n  [Pausing 30s at {request_count} requests]")
                 time.sleep(30)
@@ -1714,7 +1714,7 @@ def run_metrics():
             except Exception as e:
                 print(f"ERROR: {e}")
 
-            time.sleep(0.5)
+            time.sleep(0.15)
             if request_count % 200 == 0:
                 print(f"\n  [Pausing 30s at {request_count} requests]")
                 time.sleep(30)
@@ -1729,6 +1729,7 @@ def run_metrics():
     win_labels   = ["T-90→T-60", "T-60→T-30", "T-30→Now"]
 
     header = ["Client"]
+    header += ["FB Total Followers", "IG Total Followers", "TT Total Followers"]
     for win in win_labels:
         for plat in plats:
             for metric in metrics_list:
@@ -1946,7 +1947,7 @@ def run_full():
             except Exception as e:
                 print(f"ERROR: {e}")
 
-            time.sleep(0.5)
+            time.sleep(0.15)
             if request_count % 200 == 0:
                 print(f"\n  [Pausing 30s at {request_count} requests]")
                 time.sleep(30)
@@ -1963,6 +1964,7 @@ def run_full():
     win_labels   = ["T-90→T-60", "T-60→T-30", "T-30→Now"]
 
     header = ["Client"]
+    header += ["FB Total Followers", "IG Total Followers", "TT Total Followers"]
     for win in win_labels:
         for plat in plats:
             for metric in metrics_list:
@@ -1976,6 +1978,9 @@ def run_full():
     matched  = 0
     for client_name, plat_data in sorted(results.items()):
         row = [client_name]
+        for plat in plats:
+            all_vals = [plat_data.get(plat, {}).get(win, {}).get("followers", 0) or 0 for win in win_labels]
+            row.append(max(all_vals))
         for win in win_labels:
             for plat in plats:
                 for metric in metrics_list:
