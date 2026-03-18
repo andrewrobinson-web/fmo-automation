@@ -1793,11 +1793,41 @@ def run_metrics():
 ASANA_PROJECT_GID = "1201870248175720"
 ASANA_BASE        = "https://app.asana.com/api/1.0"
 ASANA_OVERRIDES   = {
+    # Original overrides
     "Gail Hillman | CCM (Mortgage/Real Estate)":                   "Gail Hillman | Cross Country Mortgage // ORG 6",
     "Geneva Financial | John S Branch (Mortgage/Real Estate)":     "Geneva Financial John S Branch // ORG 4",
     "Derick Hungerfield (Mortgage/Real Estate)":                   "Derick Hungerford // ORG 4",
     "A.J. DiCarlo | CrossCountry Mortgage (Mortgage/Real Estate)": "AJ DiCarlo | CrossCountry Mortgage // ORG 4",
     "Michael Balian (Law)":                                        "Balian Legal // ORG 4",
+    # New overrides from manual review 2026-03-17
+    "303-DEFENSE":                        "303 Defense // ORG 6",
+    "Antonio Cousin, Realtor":            "Service 1st Real Estate (Antonio Cousin) // Org 1",
+    "DeHoyos Accident Attorneys":         "OFFBOARDING 03.18.2026 // DeHoyos Law Firm // ORG 6",
+    "Gustman Law P.C.":                   "Gustman Law // ORG 1",
+    "K2 Commercial Finance":              "K2 Finance",
+    "Law Office of Susan Meisel Levin":   "Law Office of Susan Meisel Levin, P.A. // ORG 5",
+    "Melanie Giglio-Vakos Partners":      "MVP Team // ORG 1",
+    "MVP Team":                           "MVP Team // ORG 1",
+    "Melissa Matson":                     "MRS Wealth Advisors",
+    "MedequipRx":                         "Preventive Diagnostic Group // ORG 6",
+    "Moftah Law Firm":                    "Attorney Dalia Moftah // ORG 4",
+    "Morgan Standard Properties":         "RL Morgan // ORG 1",
+    "Mortgages With Nav Nagra":           "Navdeep Nagra | Acre Mortgage // ORG 6",
+    "Naert Law Firm, LLC":                "Naert Law Firm // ORG 4",
+    "OrlandoHomeLoans":                   "Acrisure Mortgage | John Edmead // ORG 6",
+    "Pan Florida Realty, Inc":            "Pan Florida Realty // ORG 4",
+    "Reid DeChant":                       "DeChant Law // ORG 1",
+    "Ruben Restrepo, Esq.":              "Ruben Restrepo Law // ORG 5",
+    "Team Scher - Signature Premier Properties": "Zach Scher // ORG 5",
+    "The MortgageFella":                  "The Mortgage Fella | Ryan Richardson // ORG 1",
+    "The Santos Law Offices, PA":         "The Santos Law Offices // ORG 4",
+    "The Ticket Dr":                      "Jardine Law Offices P.C. // ORG 5",
+    "Valor Mortgage, LLC":                "Valor Mortgage // ORG 6",
+    "Watson Kulman LLC":                  "Watson Kuhlman LLC // ORG 4",
+    "burnouttorenewal":                   "Burnout to Renewal // ORG 5",
+    "dechantlaw":                         "DeChant Law // ORG 1",
+    "harmangreenpc":                      "Harman Green PC // Org 6",
+    "sharonthompsonteam":                 "Sharon Thompson Team | Fairway Independent Mortgage // ORG 1",
 }
 
 def asana_get(path):
