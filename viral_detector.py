@@ -2060,6 +2060,143 @@ def run_full():
         print(f"✓ Saved to {fn}")
 
 
+
+# ─── AUDIT: NAME MATCHING ────────────────────────────────────────
+
+def run_audit():
+    """Compare all Agorapulse profile names against Asana task names.
+    Flags mismatches and suggests closest Asana match for each."""
+    import urllib.request as _ur
+
+    print("=" * 60)
+    print("NAME MATCHING AUDIT")
+    print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print("=" * 60)
+
+    # ── Step 1: Get all Agorapulse profile names ─────────────────
+    print("\nPulling Agorapulse profiles...")
+    agorapulse_profiles = {}  # name -> list of platforms
+    for org_id, ws_id in ORG_WORKSPACES:
+        profiles = get_profiles(org_id, ws_id)
+        for p in profiles:
+            ptype = p.get("profileType", "")
+            if ptype not in METRICS_PLATFORMS:
+                continue
+            name = p.get("profileName", "").strip()
+            plat = PLATFORM_DISPLAY.get(ptype, ptype)
+            if name not in agorapulse_profiles:
+                agorapulse_profiles[name] = []
+            agorapulse_profiles[name].append(plat)
+        time.sleep(0.5)
+
+    print(f"✓ {len(agorapulse_profiles)} unique client names in Agorapulse")
+
+    # ── Step 2: Get all Asana task names ─────────────────────────
+    print("\nPulling Asana tasks...")
+    pat = os.environ.get("ASANA_PAT", "")
+    if not pat:
+        print("  No ASANA_PAT set — skipping Asana step")
+        return
+
+    def asana_fetch(path):
+        req = _ur.Request(f"{ASANA_BASE}{path}",
+            headers={"Authorization": f"Bearer {pat}", "Accept": "application/json"})
+        with _ur.urlopen(req) as r:
+            return json.loads(r.read())
+
+    tasks, path = [], f"/projects/{ASANA_PROJECT_GID}/tasks?opt_fields=name&limit=100"
+    while path:
+        data = asana_fetch(path)
+        tasks += data.get("data", [])
+        np = data.get("next_page")
+        path = np["path"] if np else None
+        if np: time.sleep(0.3)
+
+    asana_names = [t["name"].strip() for t in tasks]
+    print(f"✓ {len(asana_names)} tasks in Asana")
+
+    # ── Step 3: Find matches and mismatches ───────────────────────
+    def find_match(ap_name):
+        # Check overrides first
+        if ap_name in ASANA_OVERRIDES:
+            target = ASANA_OVERRIDES[ap_name]
+            found = target in asana_names
+            return ("OVERRIDE", target, found)
+
+        # Try exact match after cleaning
+        short = ap_name.split(" //")[0].split("(")[0].strip().lower()
+        for an in asana_names:
+            if short == an.lower().split(" //")[0].split("(")[0].strip():
+                return ("EXACT", an, True)
+
+        # Try fuzzy word match
+        words = [w for w in short.split() if len(w) >= 4]
+        best = None
+        best_score = 0
+        for an in asana_names:
+            score = sum(1 for w in words if w in an.lower())
+            if score > best_score and score >= min(2, len(words)):
+                best_score = score
+                best = an
+        if best:
+            return ("FUZZY", best, True)
+
+        # No match — find closest suggestion
+        best_suggestion = None
+        best_score = 0
+        for an in asana_names:
+            score = sum(1 for w in short.split() if len(w) >= 3 and w in an.lower())
+            if score > best_score:
+                best_score = score
+                best_suggestion = an
+        return ("NO MATCH", best_suggestion, False)
+
+    print("\n" + "=" * 60)
+    print("RESULTS")
+    print("=" * 60)
+
+    matched = []
+    unmatched = []
+
+    for ap_name, plats in sorted(agorapulse_profiles.items()):
+        match_type, suggestion, found = find_match(ap_name)
+        if found:
+            matched.append((ap_name, match_type, suggestion))
+        else:
+            unmatched.append((ap_name, plats, suggestion))
+
+    print(f"\n✓ MATCHED: {len(matched)}/{len(agorapulse_profiles)}")
+    print(f"✗ UNMATCHED: {len(unmatched)}/{len(agorapulse_profiles)}")
+
+    if unmatched:
+        print("\n" + "─" * 60)
+        print("UNMATCHED CLIENTS — add these to ASANA_OVERRIDES:")
+        print("─" * 60)
+        for ap_name, plats, suggestion in unmatched:
+            plat_str = "/".join(plats)
+            print(f"\n  Agorapulse: '{ap_name}' [{plat_str}]")
+            if suggestion:
+                print(f"  Suggested:  '{suggestion}'")
+                print(f"  Add:        \"{ap_name}\": \"{suggestion}\",")
+            else:
+                print(f"  Suggested:  NO ASANA MATCH FOUND")
+
+    # Save to file
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    fn = f"audit_{ts}.txt"
+    with open(fn, "w") as f:
+        f.write(f"NAME MATCHING AUDIT — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+        f.write(f"Matched: {len(matched)} / Unmatched: {len(unmatched)}\n\n")
+        f.write("UNMATCHED:\n")
+        for ap_name, plats, suggestion in unmatched:
+            f.write(f"  {ap_name} [{'/'.join(plats)}]\n")
+            if suggestion:
+                f.write(f"    → {suggestion}\n")
+        f.write("\nMATCHED:\n")
+        for ap_name, match_type, asana_name in matched:
+            f.write(f"  [{match_type}] {ap_name} → {asana_name}\n")
+    print(f"\n✓ Saved to {fn}")
+
 # ─── CLI ────────────────────────────────────────────────────────
 
 def main():
@@ -2075,6 +2212,8 @@ def main():
         discover_profiles()
     elif cmd == "--test-one":
         test_one_profile()
+    elif cmd == "--audit":
+        run_audit()
     elif cmd == "--metrics":
         run_metrics()
     elif cmd == "--full":
@@ -2104,6 +2243,7 @@ Commands:
   --discover-orgs       List orgs + workspaces
   --discover-profiles   List all profiles (saves CSV)
   --test-one            Test 1 profile content report
+  --audit               Compare Agorapulse vs Asana names, flag mismatches
   --metrics             Pull T-90/T-60/T-30 metrics → Google Sheets
   --full                Metrics + Asana comments → Google Sheets (one tab)
   --scan                Full viral scan (default)
