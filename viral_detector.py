@@ -1941,21 +1941,17 @@ def run_full(client_filter=None, quarter_filter=None):
 
     now = datetime.now(timezone.utc)
 
+    # Build client whitelist from Asana quarter if specified
+    quarter_client_list = None
     if quarter_filter:
-        # Fixed quarter window — split into 3 equal monthly chunks
-        q_since, q_until = get_quarter_windows(quarter_filter)
-        chunk = (q_until - q_since) // 3
-        t0  = q_until
-        t30 = q_since + chunk * 2
-        t60 = q_since + chunk
-        t90 = q_since
-        win_suffix = f" {quarter_filter}"
-    else:
-        t0  = int(now.timestamp())
-        t30 = int((now - timedelta(days=30)).timestamp())
-        t60 = int((now - timedelta(days=60)).timestamp())
-        t90 = int((now - timedelta(days=90)).timestamp())
-        win_suffix = ""
+        quarter_client_list = get_clients_for_quarter(quarter_filter)
+
+    # Always use rolling 90-day window for metrics
+    t0  = int(now.timestamp())
+    t30 = int((now - timedelta(days=30)).timestamp())
+    t60 = int((now - timedelta(days=60)).timestamp())
+    t90 = int((now - timedelta(days=90)).timestamp())
+    win_suffix = f" {quarter_filter}" if quarter_filter else ""
 
     windows = [
         ("T-90→T-60", t90, t60),
@@ -1980,6 +1976,18 @@ def run_full(client_filter=None, quarter_filter=None):
             name  = profile.get("profileName", "unknown")
             ptype = profile.get("profileType", "unknown")
             plat  = PLATFORM_DISPLAY.get(ptype, ptype)
+
+            if client_filter and client_filter.lower() not in name.lower():
+                continue
+            if quarter_client_list is not None:
+                # Check if this profile name matches any client in the quarter list
+                name_lower = name.lower()
+                in_quarter = any(
+                    name_lower in qc.lower() or qc.lower().split(" //")[0].strip() in name_lower
+                    for qc in quarter_client_list
+                )
+                if not in_quarter:
+                    continue
 
             print(f"  [{i}/{len(profiles)}] {name} ({plat})...", end=" ", flush=True)
 
@@ -2070,7 +2078,7 @@ def run_full(client_filter=None, quarter_filter=None):
         gc  = gspread.authorize(creds)
         sh  = gc.open_by_url(METRICS_SHEET_URL)
         filter_suffix = f" — {client_filter}" if client_filter else (f" — {quarter_filter}" if quarter_filter else "")
-    tab = datetime.today().strftime("%Y-%m-%d") + " Full Pull" + filter_suffix
+        tab = datetime.today().strftime("%Y-%m-%d") + " Full Pull" + filter_suffix
 
         try:
             ws = sh.add_worksheet(title=tab, rows=3000, cols=len(header) + 2)
@@ -2097,6 +2105,52 @@ def run_full(client_filter=None, quarter_filter=None):
         print(f"✓ Saved to {fn}")
 
 
+
+
+def get_clients_for_quarter(quarter):
+    """Pull client names from Asana master roster filtered by Quarter field."""
+    import urllib.request as _ur
+    pat = os.environ.get("ASANA_PAT", "")
+    if not pat:
+        print("  No ASANA_PAT — cannot filter by quarter")
+        return None
+
+    print(f"  Fetching {quarter} clients from Asana...")
+
+    def asana_fetch(path):
+        req = _ur.Request(f"{ASANA_BASE}{path}",
+            headers={"Authorization": f"Bearer {pat}", "Accept": "application/json"})
+        with _ur.urlopen(req) as r:
+            return json.loads(r.read())
+
+    # Pull tasks with custom fields
+    tasks, path = [], (
+        f"/projects/{ASANA_PROJECT_GID}/tasks"
+        f"?opt_fields=name,custom_fields&limit=100"
+    )
+    while path:
+        data = asana_fetch(path)
+        tasks += data.get("data", [])
+        np = data.get("next_page")
+        path = np["path"] if np else None
+        if np: time.sleep(0.3)
+
+    # Filter by Quarter custom field
+    quarter_clients = []
+    for task in tasks:
+        name = task.get("name", "").strip()
+        if not name:
+            continue
+        for field in task.get("custom_fields", []):
+            field_name = (field.get("name") or "").lower()
+            if "quarter" in field_name:
+                val = (field.get("display_value") or field.get("text_value") or "")
+                if quarter.lower() in val.lower():
+                    quarter_clients.append(name)
+                    break
+
+    print(f"  ✓ {len(quarter_clients)} clients in {quarter}")
+    return quarter_clients
 
 # ─── AUDIT: NAME MATCHING ────────────────────────────────────────
 
