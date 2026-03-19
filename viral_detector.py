@@ -1906,20 +1906,56 @@ def match_asana_comments(sheet_name, comments_map):
             return comments
     return ""
 
-def run_full():
-    """Run metrics pull + Asana comments and write combined output to Google Sheets."""
+def get_quarter_windows(quarter):
+    """Return (since_ts, until_ts) for a given quarter of the current year."""
+    year = datetime.now().year
+    quarters = {
+        "Q1": (datetime(year, 1,  1,  tzinfo=timezone.utc), datetime(year, 3,  31, 23, 59, 59, tzinfo=timezone.utc)),
+        "Q2": (datetime(year, 4,  1,  tzinfo=timezone.utc), datetime(year, 6,  30, 23, 59, 59, tzinfo=timezone.utc)),
+        "Q3": (datetime(year, 7,  1,  tzinfo=timezone.utc), datetime(year, 9,  30, 23, 59, 59, tzinfo=timezone.utc)),
+        "Q4": (datetime(year, 10, 1,  tzinfo=timezone.utc), datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)),
+    }
+    if quarter not in quarters:
+        raise ValueError(f"Invalid quarter '{quarter}'. Use Q1, Q2, Q3, or Q4.")
+    start, end = quarters[quarter]
+    return int(start.timestamp()), int(end.timestamp())
+
+
+def run_full(client_filter=None, quarter_filter=None):
+    """Run metrics pull + Asana comments and write combined output to Google Sheets.
+    
+    Args:
+        client_filter: str — only process this client name (partial match ok)
+        quarter_filter: str — Q1/Q2/Q3/Q4 — use fixed quarter window instead of rolling 90 days
+    """
     print("=" * 60)
     print("FULL CLIENT SCORECARD DATA PULL")
     print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    if client_filter:
+        print(f"Filter: CLIENT = '{client_filter}'")
+    if quarter_filter:
+        print(f"Filter: QUARTER = {quarter_filter}")
     print("Step 1/2: Agorapulse Metrics")
     print("Step 2/2: Asana Comments")
     print("=" * 60)
 
-    now    = datetime.now(timezone.utc)
-    t0     = int(now.timestamp())
-    t30    = int((now - timedelta(days=30)).timestamp())
-    t60    = int((now - timedelta(days=60)).timestamp())
-    t90    = int((now - timedelta(days=90)).timestamp())
+    now = datetime.now(timezone.utc)
+
+    if quarter_filter:
+        # Fixed quarter window — split into 3 equal monthly chunks
+        q_since, q_until = get_quarter_windows(quarter_filter)
+        chunk = (q_until - q_since) // 3
+        t0  = q_until
+        t30 = q_since + chunk * 2
+        t60 = q_since + chunk
+        t90 = q_since
+        win_suffix = f" {quarter_filter}"
+    else:
+        t0  = int(now.timestamp())
+        t30 = int((now - timedelta(days=30)).timestamp())
+        t60 = int((now - timedelta(days=60)).timestamp())
+        t90 = int((now - timedelta(days=90)).timestamp())
+        win_suffix = ""
 
     windows = [
         ("T-90→T-60", t90, t60),
@@ -2033,7 +2069,8 @@ def run_full():
         )
         gc  = gspread.authorize(creds)
         sh  = gc.open_by_url(METRICS_SHEET_URL)
-        tab = datetime.today().strftime("%Y-%m-%d") + " Full Pull"
+        filter_suffix = f" — {client_filter}" if client_filter else (f" — {quarter_filter}" if quarter_filter else "")
+    tab = datetime.today().strftime("%Y-%m-%d") + " Full Pull" + filter_suffix
 
         try:
             ws = sh.add_worksheet(title=tab, rows=3000, cols=len(header) + 2)
@@ -2217,7 +2254,14 @@ def main():
     elif cmd == "--metrics":
         run_metrics()
     elif cmd == "--full":
-        run_full()
+        client_filter  = None
+        quarter_filter = None
+        for arg in sys.argv[2:]:
+            if arg.startswith("--client="):
+                client_filter = arg.split("=", 1)[1]
+            elif arg.startswith("--quarter="):
+                quarter_filter = arg.split("=", 1)[1].upper()
+        run_full(client_filter=client_filter, quarter_filter=quarter_filter)
     elif cmd == "--scan":
         result = run_scan()
         if result:
@@ -2246,6 +2290,8 @@ Commands:
   --audit               Compare Agorapulse vs Asana names, flag mismatches
   --metrics             Pull T-90/T-60/T-30 metrics → Google Sheets
   --full                Metrics + Asana comments → Google Sheets (one tab)
+  --full --client="BFP Law Firm"   Run for one client only
+  --full --quarter=Q1              Run for Q1 date range
   --scan                Full viral scan (default)
   --help                Show this
 
